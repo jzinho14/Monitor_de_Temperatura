@@ -29,8 +29,8 @@ socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
 
 # Variáveis globais para o status
 last_message_ts = datetime.now(pytz.utc)
-STATUS_INTERVAL_SEC = 30
-OFFLINE_THRESHOLD_SEC = 60
+STATUS_INTERVAL_SEC = 45
+OFFLINE_THRESHOLD_SEC = 120
 current_device_status = ""
 # Não precisamos mais do LOG_FILE, pois o log irá para o banco de dados
 # LOG_FILE = "status_log.json"
@@ -173,20 +173,24 @@ def on_message(client, userdata, msg):
         payload_str = msg.payload.decode().strip()
         valor = float(payload_str)
         
+        # Use o fuso horário de São Paulo para manter a consistência com sua localização
         brazil_tz = pytz.timezone('America/Sao_Paulo')
         ts = datetime.now(brazil_tz).strftime("%Y-%m-%d %H:%M:%S")
 
         salvar_leitura(valor, ts)
         
+        # Atualiza o timestamp da última mensagem
         last_message_ts = datetime.now(pytz.utc)
 
+        # Checa e força a mudança de status caso ele estivesse offline
         if current_device_status == "offline" or current_device_status == "":
             timestamp = datetime.now().isoformat()
             add_status_event("online", timestamp)
             current_device_status = "online"
             
+        # emite para todos os clientes conectados
         socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts})
-        socketio.emit('esp32_status', {'status': 'online'})
+        socketio.emit('esp32_status', {'status': 'online'}) # Envia o status online imediatamente
 
     except Exception as e:
         print("Erro ao processar mensagem MQTT:", e)
@@ -207,15 +211,24 @@ threading.Thread(target=mqtt_loop, daemon=True).start()
 # Rotinas em background
 # ---------------------------
 def check_device_status():
+    """Verifica o status do dispositivo e emite para o front-end, registrando mudanças."""
     global last_message_ts, current_device_status
+
     while True:
         delta = datetime.now(pytz.utc) - last_message_ts
         new_status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
+
+        # Detecta a mudança de status e registra no log
+        # Só registra se o status mudou (ou na primeira execução)
         if new_status != current_device_status:
             timestamp = datetime.now().isoformat()
             add_status_event(new_status, timestamp)
             current_device_status = new_status
+
+        # Envia o status para todos os clientes conectados
         socketio.emit('esp32_status', {'status': new_status})
+        
+        # Pausa para o próximo ciclo de verificação
         socketio.sleep(STATUS_INTERVAL_SEC)
 
 def keep_alive():
@@ -228,6 +241,14 @@ def keep_alive():
         except Exception as e:
             print("Keep-alive: falha ao enviar requisição:", e)
         socketio.sleep(600)
+        
+        
+@socketio.on('connect')
+def handle_connect():
+    # Envia o status atual do dispositivo para o cliente que acabou de se conectar
+    delta = datetime.now(pytz.utc) - last_message_ts
+    status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
+    socketio.emit('esp32_status', {'status': status})
 
 # ---------------------------
 # Rotas
@@ -267,6 +288,11 @@ def historico_intervalo():
 # Run
 # ---------------------------
 if __name__ == "__main__":
+    # Inicie a tarefa de monitoramento do dispositivo (ESP32)
     socketio.start_background_task(target=check_device_status)
+
+    # Inicie a tarefa de keep-alive para evitar inatividade na hospedagem
     threading.Thread(target=keep_alive, daemon=True).start()
+
+    # Evita problemas em IDEs com reloader
     socketio.run(app, host="0.0.0.0", port=APP_PORT, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
