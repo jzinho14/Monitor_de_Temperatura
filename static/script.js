@@ -35,6 +35,8 @@ socket.on('nova_temperatura', function(msg) {
     Plotly.update('chart', data, layout);
 });
 
+
+
 // --- Botões ---
 document.getElementById("tempoReal").addEventListener("click", function(){
     this.classList.add("ativo");

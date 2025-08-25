@@ -23,6 +23,8 @@ html,body{ margin:0; padding:0; background: var(--bg); color: var(--text); font-
 }
 .brand{ font-weight:600; letter-spacing:.3px; display:flex; align-items:center; gap:10px; }
 .brand .dot{ width:10px; height:10px; background: var(--primary); border-radius:50%; box-shadow:0 0 12px var(--primary); }
+.badge.online { background-color: #4CAF50; }
+.badge.offline { background-color: #F44336; }
 
 .container{ max-width:1200px; margin: 20px auto; padding: 0 16px; }
 
