@@ -16,7 +16,7 @@ import paho.mqtt.client as mqtt
 # Configuração básica
 # ---------------------------
 APP_PORT = int(os.environ.get("PORT", 5000))
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DATABASE_URL = os.environ.get("postgresql://temperatura_2en4_user:bvAGWT36R3raTbzNRta6e4uHJ5Dv1yWs@dpg-d2lscujuibrs73fj6nv0-a.virginia-postgres.render.com/temperatura_2en4")
 
 MQTT_BROKER = os.environ.get("MQTT_BROKER", "f67708c3dd0e4e38822956f08a661bd7.s1.eu.hivemq.cloud")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "8883"))
