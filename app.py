@@ -4,6 +4,7 @@ import sqlite3
 import threading
 import paho.mqtt.client as mqtt
 import time
+import os
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -83,4 +84,4 @@ def historico():
     return jsonify(dados)
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True, use_reloader=False)
