@@ -29,8 +29,8 @@ socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
 
 # Variáveis globais para o status
 last_message_ts = datetime.now(pytz.utc)
-STATUS_INTERVAL_SEC = 45
-OFFLINE_THRESHOLD_SEC = 120
+STATUS_INTERVAL_SEC = 50
+OFFLINE_THRESHOLD_SEC = 100
 current_device_status = ""
 # Não precisamos mais do LOG_FILE, pois o log irá para o banco de dados
 # LOG_FILE = "status_log.json"
@@ -50,7 +50,7 @@ def get_conn():
         port=result.port
     )
 
-def init_db(reset=False):
+def init_db(reset=True):
     conn = get_conn()
     cur = conn.cursor()
     if reset:
