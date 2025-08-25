@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard Temperatura</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        #chart { width: 100%; height: 600px; }
+        button { margin: 5px; padding: 10px 15px; border-radius: 5px; border: none; background-color: #007BFF; color: white; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        input { margin: 5px; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h2>Monitor de Temperatura</h2>
+
+    <div>
+        <button id="tempoReal">Tempo Real</button>
+        <label>Quantidade de pontos:</label>
+        <input type="number" id="numPontos" value="20">
+        <label>Filtrar de:</label>
+        <input type="datetime-local" id="inicio">
+        <label>até:</label>
+        <input type="datetime-local" id="fim">
+        <button id="filtrar">Filtrar</button>
+    </div>
+
+    <div id="chart"></div>
+    <script src="/static/script.js"></script>
+</body>
+</html>
