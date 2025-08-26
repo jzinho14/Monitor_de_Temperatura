@@ -97,7 +97,7 @@ document.getElementById('chart').on('plotly_relayout', function(evt){
 
 // ----------------- Tempo real (socket) -----------------
 socket.on('nova_temperatura', (msg) => {
-  console.log("chamando socket on")
+  console.log("CLOG :: fc nova_temperatura Tempo real");
   // adiciona no histórico completo
   const ponto = { x: new Date(msg.timestamp || Date.now()), y: msg.valor };
   historicoCompleto.push(ponto);
@@ -122,6 +122,7 @@ socket.on('nova_temperatura', (msg) => {
 
 // Listener para o status do ESP32
 socket.on('esp32_status', (msg) => {
+  console.log("CLOG :: fc esp32_status");
   if (msg.status === 'online') {
     statusESP32.textContent = "ESP32: Online";
     statusESP32.classList.remove("offline");
