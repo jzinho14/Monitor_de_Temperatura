@@ -1,10 +1,8 @@
 import os
-import sqlite3
 import threading
-from datetime import datetime, date, timedelta
+from datetime import datetime
 import pytz
 import requests
-import json
 import psycopg2
 from urllib.parse import urlparse
 
@@ -27,13 +25,13 @@ MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "joao/teste/temperatura")
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Variáveis globais para o status
-last_message_ts = datetime.now(pytz.utc)
+# ---------------------------
+# Variáveis globais de status
+# ---------------------------
+last_message_ts = None   # ainda não recebemos nenhuma mensagem
 STATUS_INTERVAL_SEC = 50
 OFFLINE_THRESHOLD_SEC = 100
-current_device_status = ""
-# Não precisamos mais do LOG_FILE, pois o log irá para o banco de dados
-# LOG_FILE = "status_log.json"
+current_device_status = "offline"  # começa offline
 
 # ---------------------------
 # Banco de dados (PostgreSQL)
@@ -51,31 +49,27 @@ def get_conn():
         sslmode="require"
     )
 
-def init_db(reset=True):
+def init_db(reset=False):
     conn = get_conn()
     cur = conn.cursor()
     if reset:
         cur.execute("DROP TABLE IF EXISTS leituras")
         cur.execute("DROP TABLE IF EXISTS status_log")
 
-    # Tabela para as leituras de temperatura
     cur.execute("""
         CREATE TABLE IF NOT EXISTS leituras (
             id SERIAL PRIMARY KEY,
             valor REAL NOT NULL,
-            timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
-    # Nova tabela para o log de status do dispositivo
     cur.execute("""
         CREATE TABLE IF NOT EXISTS status_log (
             id SERIAL PRIMARY KEY,
             status VARCHAR(20) NOT NULL,
-            timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
     conn.commit()
     conn.close()
 
@@ -144,16 +138,12 @@ def buscar_intervalo_data(inicio_iso, fim_iso, limite=2000):
     conn.close()
     return rows
 
-# Inicializa DB (sem reset por padrão)
 init_db(reset=False)
 
 # ---------------------------
-# Funções de Log (agora usam o banco de dados)
+# Log de status
 # ---------------------------
-# A função get_status_log não é mais necessária, pois vamos inserir diretamente no DB.
-
 def add_status_event(status, timestamp):
-    """Adiciona um novo evento ao histórico no banco de dados."""
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("INSERT INTO status_log (status, timestamp) VALUES (%s, %s)", (status, timestamp))
@@ -162,7 +152,7 @@ def add_status_event(status, timestamp):
     print(f"Evento de status registrado: {status} em {timestamp}")
 
 # ---------------------------
-# MQTT (Paho)
+# MQTT
 # ---------------------------
 def on_connect(client, userdata, flags, rc):
     print("Conectado ao broker MQTT com código:", rc)
@@ -171,27 +161,22 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     try:
         global last_message_ts, current_device_status
-        payload_str = msg.payload.decode().strip()
         valor = float(msg.payload.decode().strip())
-        
-        # Use o fuso horário de São Paulo para manter a consistência com sua localização
+
         brazil_tz = pytz.timezone('America/Sao_Paulo')
         ts = datetime.now(brazil_tz)
-    
-        salvar_leitura(valor, ts)  # aqui ts vai como datetime com fuso
-        
-        # Atualiza o timestamp da última mensagem
+
+        salvar_leitura(valor, ts)
+
         last_message_ts = datetime.now(pytz.utc)
 
-        # Checa e força a mudança de status caso ele estivesse offline
-        if current_device_status == "offline" or current_device_status == "":
+        if current_device_status != "online":
             timestamp = datetime.now().isoformat()
             add_status_event("online", timestamp)
             current_device_status = "online"
-            
-        # emite para todos os clientes conectados
-        socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts})
-        socketio.emit('esp32_status', {'status': 'online'}) # Envia o status online imediatamente
+
+        socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts.isoformat()})
+        socketio.emit('esp32_status', {'status': 'online'})
 
     except Exception as e:
         print("Erro ao processar mensagem MQTT:", e)
@@ -209,27 +194,24 @@ def mqtt_loop():
 threading.Thread(target=mqtt_loop, daemon=True).start()
 
 # ---------------------------
-# Rotinas em background
+# Rotinas de background
 # ---------------------------
 def check_device_status():
-    """Verifica o status do dispositivo e emite para o front-end, registrando mudanças."""
     global last_message_ts, current_device_status
 
     while True:
-        delta = datetime.now(pytz.utc) - last_message_ts
-        new_status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
+        if last_message_ts is None:
+            new_status = "offline"
+        else:
+            delta = datetime.now(pytz.utc) - last_message_ts
+            new_status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
 
-        # Detecta a mudança de status e registra no log
-        # Só registra se o status mudou (ou na primeira execução)
         if new_status != current_device_status:
             timestamp = datetime.now().isoformat()
             add_status_event(new_status, timestamp)
             current_device_status = new_status
 
-        # Envia o status para todos os clientes conectados
         socketio.emit('esp32_status', {'status': new_status})
-        
-        # Pausa para o próximo ciclo de verificação
         socketio.sleep(STATUS_INTERVAL_SEC)
 
 def keep_alive():
@@ -242,17 +224,18 @@ def keep_alive():
         except Exception as e:
             print("Keep-alive: falha ao enviar requisição:", e)
         socketio.sleep(600)
-        
-        
+
 @socketio.on('connect')
 def handle_connect():
-    # Envia o status atual do dispositivo para o cliente que acabou de se conectar
-    delta = datetime.now(pytz.utc) - last_message_ts
-    status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
+    if last_message_ts is None:
+        status = "offline"
+    else:
+        delta = datetime.now(pytz.utc) - last_message_ts
+        status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
     socketio.emit('esp32_status', {'status': status})
 
 # ---------------------------
-# Rotas
+# Rotas Flask
 # ---------------------------
 @app.route("/")
 def index():
@@ -289,11 +272,6 @@ def historico_intervalo():
 # Run
 # ---------------------------
 if __name__ == "__main__":
-    # Inicie a tarefa de monitoramento do dispositivo (ESP32)
     socketio.start_background_task(target=check_device_status)
-
-    # Inicie a tarefa de keep-alive para evitar inatividade na hospedagem
     threading.Thread(target=keep_alive, daemon=True).start()
-
-
     socketio.run(app, host="0.0.0.0", port=APP_PORT)
