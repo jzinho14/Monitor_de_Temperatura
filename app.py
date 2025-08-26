@@ -172,13 +172,13 @@ def on_message(client, userdata, msg):
     try:
         global last_message_ts, current_device_status
         payload_str = msg.payload.decode().strip()
-        valor = float(payload_str)
+        valor = float(msg.payload.decode().strip())
         
         # Use o fuso horário de São Paulo para manter a consistência com sua localização
         brazil_tz = pytz.timezone('America/Sao_Paulo')
-        ts = datetime.now(brazil_tz).strftime("%Y-%m-%d %H:%M:%S")
-
-        salvar_leitura(valor, ts)
+        ts = datetime.now(brazil_tz)
+    
+        salvar_leitura(valor, ts)  # aqui ts vai como datetime com fuso
         
         # Atualiza o timestamp da última mensagem
         last_message_ts = datetime.now(pytz.utc)
