@@ -25,7 +25,7 @@ MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "Senac_FMABC_7428")
 MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "joao/teste/temperatura")
 
 app = Flask(__name__)
-socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Variáveis globais para o status
 last_message_ts = datetime.now(pytz.utc)
@@ -295,5 +295,5 @@ if __name__ == "__main__":
     # Inicie a tarefa de keep-alive para evitar inatividade na hospedagem
     threading.Thread(target=keep_alive, daemon=True).start()
 
-    # Evita problemas em IDEs com reloader
-    socketio.run(app, host="0.0.0.0", port=APP_PORT, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
+
+    socketio.run(app, host="0.0.0.0", port=APP_PORT)
