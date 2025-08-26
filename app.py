@@ -10,6 +10,8 @@ from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 import paho.mqtt.client as mqtt
 
+import logging
+
 # ---------------------------
 # Configuração básica
 # ---------------------------
@@ -159,6 +161,7 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(MQTT_TOPIC)
 
 def on_message(client, userdata, msg):
+    logging.info("AQUI - on message")
     try:
         global last_message_ts, current_device_status
         valor = float(msg.payload.decode().strip())
@@ -284,6 +287,7 @@ def historico_intervalo():
 # Run
 # ---------------------------
 if __name__ == "__main__":
-    socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+    socketio.start_background_task(target=check_device_status)
+    #socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
     threading.Thread(target=keep_alive, daemon=True).start()
     socketio.run(app, host="0.0.0.0", port=APP_PORT)
