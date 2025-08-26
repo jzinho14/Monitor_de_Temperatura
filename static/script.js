@@ -17,6 +17,7 @@ Plotly.newPlot('chart', data, layout);
 
 // --- Recebe dados em tempo real ---
 socket.on('nova_temperatura', function(msg) {
+    console.log("CLOG :: fc nova_temperatura Tempo real");
     var x = new Date();
     var y = msg.valor;
     var numPontos = parseInt(document.getElementById("numPontos").value) || 20;
@@ -39,6 +40,7 @@ socket.on('nova_temperatura', function(msg) {
 
 // --- Botões ---
 document.getElementById("tempoReal").addEventListener("click", function(){
+    console.log("click tempo real")
     this.classList.add("ativo");
     fetchHistorico();
 });
