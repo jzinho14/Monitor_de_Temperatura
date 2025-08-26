@@ -205,19 +205,23 @@ def check_device_status():
 
     while True:
         if last_message_ts is None:
+            logging.info("0!!!!")
             print("Status :: last message none")
             new_status = "offline"
         else:
             print("Status :: last message 1")
+            logging.info("1!!!!")
             delta = datetime.now(pytz.utc) - last_message_ts
             new_status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
 
         if new_status != current_device_status:
+            logging.info("2!!!!")
             print("Status :: last message 2")
             timestamp = datetime.now().isoformat()
             add_status_event(new_status, timestamp)
             current_device_status = new_status
         
+        logging.info("3!!!!")
         print("Status :: last message 3")
         socketio.emit('esp32_status', {'status': new_status})
         socketio.sleep(STATUS_INTERVAL_SEC)
@@ -235,6 +239,7 @@ def keep_alive():
 
 @socketio.on('connect')
 def handle_connect():
+    logging.info("handle_connect")
     if last_message_ts is None:
         status = "offline"
     else:
