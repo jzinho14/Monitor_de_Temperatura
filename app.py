@@ -175,7 +175,7 @@ def on_message(client, userdata, msg):
             add_status_event("online", timestamp)
             current_device_status = "online"
 
-        socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts.isoformat()})
+        socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts})
         socketio.emit('esp32_status', {'status': 'online'})
 
     except Exception as e:
