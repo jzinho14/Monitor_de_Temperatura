@@ -101,18 +101,6 @@ socket.on('nova_temperatura', (msg) => {
   const ponto = { x: new Date(msg.timestamp || Date.now()), y: msg.valor };
   historicoCompleto.push(ponto);
   
-// Listener para o status do ESP32
-socket.on('esp32_status', (msg) => {
-  if (msg.status === 'online') {
-    statusESP32.textContent = "ESP32: Online";
-    statusESP32.classList.remove("offline");
-    statusESP32.classList.add("online");
-  } else {
-    statusESP32.textContent = "ESP32: Offline";
-    statusESP32.classList.remove("online");
-    statusESP32.classList.add("offline");
-  }
-});
 
   // atualiza big number atual e média do dia (recalcular leve no cliente: opcional)
   elAtual.textContent = fmt(msg.valor);
@@ -129,6 +117,21 @@ socket.on('esp32_status', (msg) => {
     }], layout);
   }
 });
+
+
+// Listener para o status do ESP32
+socket.on('esp32_status', (msg) => {
+  if (msg.status === 'online') {
+    statusESP32.textContent = "ESP32: Online";
+    statusESP32.classList.remove("offline");
+    statusESP32.classList.add("online");
+  } else {
+    statusESP32.textContent = "ESP32: Offline";
+    statusESP32.classList.remove("online");
+    statusESP32.classList.add("offline");
+  }
+});
+
 
 // ----------------- Controles -----------------
 btnTempoReal.addEventListener('click', () => {

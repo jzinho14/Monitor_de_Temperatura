@@ -243,10 +243,18 @@ def index():
 
 @app.route("/dados_iniciais")
 def dados_iniciais():
-    limite = int(request.args.get("limite", 300))
+    limite = int(request.args.get("preload", 300))
     rows = buscar_ultimos(limite)
     dados = [{"valor": r[0], "timestamp": r[1]} for r in rows]
-    return jsonify({"dados": dados})
+
+    # pega estatísticas do dia e último valor
+    est = estatisticas_hoje()
+
+    return jsonify({
+        "dados": dados,
+        "ultimo": est["atual"],
+        "media_dia": est["media_hoje"]
+    })
 
 @app.route("/estatisticas")
 def stats():
