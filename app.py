@@ -11,6 +11,7 @@ from flask_socketio import SocketIO
 import paho.mqtt.client as mqtt
 
 import logging
+logging.basicConfig(level=logging.INFO)
 
 # ---------------------------
 # Configuração básica
