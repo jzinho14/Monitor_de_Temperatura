@@ -177,3 +177,5 @@ btnAplicar.addEventListener('click', async () => {
   const est = await (await fetch(url)).json();
   atualizarBigNumbers(est.ultimo, est.media_dia, est.media_periodo);
 });
+
+

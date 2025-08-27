@@ -162,7 +162,6 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(MQTT_TOPIC)
 
 def on_message(client, userdata, msg):
-    logging.info("AQUI - on message")
     try:
         global last_message_ts, current_device_status
         valor = float(msg.payload.decode().strip())
@@ -205,24 +204,16 @@ def check_device_status():
 
     while True:
         if last_message_ts is None:
-            logging.info("0!!!!")
-            print("Status :: last message none")
             new_status = "offline"
         else:
-            print("Status :: last message 1")
-            logging.info("1!!!!")
             delta = datetime.now(pytz.utc) - last_message_ts
             new_status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
 
         if new_status != current_device_status:
-            logging.info("2!!!!")
-            print("Status :: last message 2")
             timestamp = datetime.now().isoformat()
             add_status_event(new_status, timestamp)
             current_device_status = new_status
-        
-        logging.info("3!!!!")
-        print("Status :: last message 3")
+
         socketio.emit('esp32_status', {'status': new_status})
         socketio.sleep(STATUS_INTERVAL_SEC)
 
@@ -293,7 +284,6 @@ def historico_intervalo():
 # Run
 # ---------------------------
 if __name__ == "__main__":
-    logging.info("INIT")
     socketio.start_background_task(target=check_device_status)
     #socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
     threading.Thread(target=keep_alive, daemon=True).start()
