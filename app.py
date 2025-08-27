@@ -23,7 +23,7 @@ MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "Senac_FMABC_7428")
 MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "joao/teste/temperatura")
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", ow_unsafe_werkzeug=True)
 
 
 # ---------------------------
