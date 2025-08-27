@@ -10,9 +10,6 @@ from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 import paho.mqtt.client as mqtt
 
-import logging
-logging.basicConfig(level=logging.INFO)
-
 # ---------------------------
 # Configuração básica
 # ---------------------------
@@ -178,7 +175,7 @@ def on_message(client, userdata, msg):
             add_status_event("online", timestamp)
             current_device_status = "online"
 
-        socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts})
+        socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts.isoformat()})
         socketio.emit('esp32_status', {'status': 'online'})
 
     except Exception as e:
@@ -230,7 +227,6 @@ def keep_alive():
 
 @socketio.on('connect')
 def handle_connect():
-    logging.info("handle_connect")
     if last_message_ts is None:
         status = "offline"
     else:
@@ -247,18 +243,10 @@ def index():
 
 @app.route("/dados_iniciais")
 def dados_iniciais():
-    limite = int(request.args.get("preload", 300))
+    limite = int(request.args.get("limite", 300))
     rows = buscar_ultimos(limite)
     dados = [{"valor": r[0], "timestamp": r[1]} for r in rows]
-
-    # pega estatísticas do dia e último valor
-    est = estatisticas_hoje()
-
-    return jsonify({
-        "dados": dados,
-        "ultimo": est["atual"],
-        "media_dia": est["media_hoje"]
-    })
+    return jsonify({"dados": dados})
 
 @app.route("/estatisticas")
 def stats():
@@ -285,6 +273,5 @@ def historico_intervalo():
 # ---------------------------
 if __name__ == "__main__":
     socketio.start_background_task(target=check_device_status)
-    #socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
     threading.Thread(target=keep_alive, daemon=True).start()
     socketio.run(app, host="0.0.0.0", port=APP_PORT)
