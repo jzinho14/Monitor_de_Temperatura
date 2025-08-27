@@ -286,4 +286,4 @@ def historico_intervalo():
 if __name__ == "__main__":
     socketio.start_background_task(target=check_device_status)
     threading.Thread(target=keep_alive, daemon=True).start()
-    socketio.run(app, host="0.0.0.0", port=APP_PORT)
+    socketio.run(app, host="0.0.0.0", port=APP_PORT, allow_unsafe_werkzeug=True)
