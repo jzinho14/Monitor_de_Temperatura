@@ -24,7 +24,8 @@ MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "Senac_FMABC_7428")
 MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "joao/teste/temperatura")
 MQTT_TOPIC_CAL = os.environ.get("MQTT_TOPIC_CAL", "joao/teste/calibragem")
 
-app = Flask(__name__, template_folder=".", static_folder="static")
+app = Flask(__name__, template_folder="templates", static_folder="static")
+
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # ---------------------------
