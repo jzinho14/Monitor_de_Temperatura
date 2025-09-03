@@ -13,10 +13,11 @@
   <div class="brand">
     <span class="dot"></span> {{ title }}
   </div>
-  <div class="actions">
+  <nav class="actions">
+    <a class="btn" href="/calibragem">Calibração</a>
     <span id="statusESP32" class="badge"></span>
     <button id="btnTempoReal" class="btn primary">Tempo real</button>
-  </div>
+  </nav>
 </header>
 
 <main class="container">
@@ -60,7 +61,7 @@
   </section>
 </main>
 
-
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script type="module" src="/static/app.js"></script>
 </body>
 </html>

@@ -1,9 +1,8 @@
+// static/app.js
 (() => {
-  // Impede rodar 2x se o script for incluído por engano
   if (window.__APP_LOADED__) return;
   window.__APP_LOADED__ = true;
 
-  // Tudo fica em escopo local: evita "Identifier 'socket' has already been declared"
   const socket = io();
 
   let historicoCompleto = [];
@@ -21,83 +20,74 @@
   const btnAplicar = document.getElementById("btnAplicar");
   const statusESP32 = document.getElementById("statusESP32");
 
-  // Helpers
   function fmt(n){
     if(n === null || n === undefined || isNaN(n)) return "--";
-    return Number(n).toFixed(1) + " °C";
+    return Number(n).toFixed(1) + " �C";
   }
   function fmtTs(iso){
-    if(!iso) return "—";
+    if(!iso) return "�";
     const d = new Date(iso);
     return d.toLocaleString();
   }
   function sliceUltimosN(arr, n){ return arr.slice(Math.max(0, arr.length - n)); }
   function atualizarBigNumbers(ultimo, mediaDia, mediaPeriodo){
     elAtual.textContent = ultimo && ultimo.valor != null ? fmt(ultimo.valor) : "--";
-    elAtualTs.textContent = ultimo && ultimo.timestamp ? ("Atualizado: " + fmtTs(ultimo.timestamp)) : "—";
+    elAtualTs.textContent = ultimo && ultimo.timestamp ? ("Atualizado: " + fmtTs(ultimo.timestamp)) : "�";
     elMediaDia.textContent = mediaDia != null ? fmt(mediaDia) : "--";
     elMediaPeriodo.textContent = mediaPeriodo != null ? fmt(mediaPeriodo) : "--";
   }
 
-  // Gráfico
   const layout = {
     margin: { t: 24, r: 18, b: 48, l: 54 },
     xaxis: { title: 'Data/Hora', type: 'date' },
-    yaxis: { title: 'Temperatura (°C)' },
+    yaxis: { title: 'Temperatura (�C)' },
     dragmode: 'pan'
   };
 
   Plotly.newPlot('chart', [{
-    x: [], y: [], mode: 'lines+markers', name: 'Temperatura (°C)'
+    x: [], y: [], mode: 'lines+markers', name: 'Temperatura (�C)'
   }], layout, {responsive: true});
 
   document.getElementById('chart').on('plotly_relayout', function(evt){
     if(evt['xaxis.range[0]'] || evt['xaxis.range[1]'] || evt['xaxis.autorange'] === false){
       tempoRealAtivo = false;
       statusTempoReal.classList.remove('on');
-      statusTempoReal.textContent = "Modo: Histórico (pan/zoom)";
+      statusTempoReal.textContent = "Modo: Hist�rico (pan/zoom)";
     }
   });
 
-  // Inicialização tolerante ao backend
   (async function init(){
     try{
-      // 1) Tenta com ?preload (caso seu backend tenha essa versão); se falhar, usa ?limite
       let res = await fetch('/dados_iniciais?preload=2000');
       if(!res.ok) res = await fetch('/dados_iniciais?limite=2000');
       const json = await res.json();
 
-      const dados = json.dados || []; // backend atual retorna {"dados":[...]}
+      const dados = json.dados || [];
       historicoCompleto = dados.map(d => ({ x: new Date(d.timestamp), y: d.valor }));
 
-      // Último ponto calculado do histórico
       const ultimoCalc = historicoCompleto.length
         ? { valor: historicoCompleto[historicoCompleto.length-1].y, timestamp: historicoCompleto[historicoCompleto.length-1].x }
         : null;
 
-      // 2) Estatísticas: backend atual sem parâmetros retorna { media_hoje, qtd_hoje, atual }
       let mediaDia = null, mediaPeriodo = null, ultimo = null;
       try{
         const est = await (await fetch('/estatisticas')).json();
         mediaDia = est.media_hoje ?? est.mediaDia ?? json.media_dia ?? null;
         mediaPeriodo = est.media_periodo ?? null;
-        // Preferência: valor mais completo disponível
         ultimo = est.atual || json.ultimo || ultimoCalc || null;
       }catch(e){
         ultimo = json.ultimo || ultimoCalc || null;
       }
 
-      // Atualiza Big Numbers
       atualizarBigNumbers(ultimo, mediaDia, mediaPeriodo);
 
-      // Plota janela inicial
       janela = parseInt(inpJanela.value || "20", 10);
       const visivel = sliceUltimosN(historicoCompleto, janela);
       Plotly.react('chart', [{
         x: visivel.map(p => p.x),
         y: visivel.map(p => p.y),
         mode: 'lines+markers',
-        name: 'Temperatura (°C)'
+        name: 'Temperatura (�C)'
       }], layout);
 
     }catch(e){
@@ -105,27 +95,23 @@
     }
   })();
 
-  // Tempo real
   socket.on('nova_temperatura', (msg) => {
     const ponto = { x: new Date(msg.timestamp || Date.now()), y: msg.valor };
     historicoCompleto.push(ponto);
 
-    // Big numbers
     atualizarBigNumbers({ valor: ponto.y, timestamp: ponto.x }, null, null);
 
-    // Gráfico
     if(tempoRealAtivo){
       const visivel = sliceUltimosN(historicoCompleto, janela);
       Plotly.react('chart', [{
         x: visivel.map(p => p.x),
         y: visivel.map(p => p.y),
         mode: 'lines+markers',
-        name: 'Temperatura (°C)'
+        name: 'Temperatura (�C)'
       }], layout);
     }
   });
 
-  // Status ESP32
   socket.on('esp32_status', (msg) => {
     if (msg.status === 'online') {
       statusESP32.textContent = "ESP32: Online";
@@ -138,7 +124,6 @@
     }
   });
 
-  // Controles
   btnTempoReal.addEventListener('click', () => {
     tempoRealAtivo = true;
     statusTempoReal.classList.add('on');
@@ -150,7 +135,7 @@
       x: visivel.map(p => p.x),
       y: visivel.map(p => p.y),
       mode: 'lines+markers',
-      name: 'Temperatura (°C)'
+      name: 'Temperatura (�C)'
     }], layout);
   });
 
@@ -162,7 +147,7 @@
         x: visivel.map(p => p.x),
         y: visivel.map(p => p.y),
         mode: 'lines+markers',
-        name: 'Temperatura (°C)'
+        name: 'Temperatura (�C)'
       }], layout);
     }
   });
@@ -173,7 +158,6 @@
     if (!ini || !fim) return alert("Informe as duas datas!");
 
     try{
-      // Atualiza gráfico com o intervalo
       const urlHist = `/historico_intervalo?inicio=${ini}&fim=${fim}&limite=2000`;
       const hist = await (await fetch(urlHist)).json();
       historicoCompleto = (hist.dados || []).map(d => ({ x: new Date(d.timestamp), y: d.valor }));
@@ -182,10 +166,9 @@
         x: historicoCompleto.map(p => p.x),
         y: historicoCompleto.map(p => p.y),
         mode: 'lines+markers',
-        name: 'Temperatura (°C)'
+        name: 'Temperatura (�C)'
       }], layout);
 
-      // Atualiza big numbers do período
       const urlEst = `/estatisticas?inicio=${ini}&fim=${fim}`;
       const est = await (await fetch(urlEst)).json();
 

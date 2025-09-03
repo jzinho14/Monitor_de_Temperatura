@@ -1,3 +1,4 @@
+# app.py
 import os
 import threading
 from datetime import datetime
@@ -5,10 +6,10 @@ import pytz
 import requests
 import psycopg2
 from urllib.parse import urlparse
-
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 import paho.mqtt.client as mqtt
+import json
 
 # ---------------------------
 # Configuração básica
@@ -21,21 +22,21 @@ MQTT_PORT = int(os.environ.get("MQTT_PORT", "8883"))
 MQTT_USER = os.environ.get("MQTT_USER", "joao_senac")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "Senac_FMABC_7428")
 MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "joao/teste/temperatura")
+MQTT_TOPIC_CAL = os.environ.get("MQTT_TOPIC_CAL", "joao/teste/calibragem")
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=".", static_folder="static")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
-
 
 # ---------------------------
 # Variáveis globais de status
 # ---------------------------
-last_message_ts = None   # ainda não recebemos nenhuma mensagem
+last_message_ts = None
 STATUS_INTERVAL_SEC = 50
 OFFLINE_THRESHOLD_SEC = 100
-current_device_status = "offline"  # começa offline
+current_device_status = "offline"
 
 # ---------------------------
-# Banco de dados (PostgreSQL)
+# Banco de dados
 # ---------------------------
 def get_conn():
     if not DATABASE_URL:
@@ -54,6 +55,7 @@ def init_db(reset=False):
     conn = get_conn()
     cur = conn.cursor()
     if reset:
+        cur.execute("DROP TABLE IF EXISTS calibragem")
         cur.execute("DROP TABLE IF EXISTS leituras")
         cur.execute("DROP TABLE IF EXISTS status_log")
 
@@ -71,6 +73,14 @@ def init_db(reset=False):
             timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS calibragem (
+            id SERIAL PRIMARY KEY,
+            sensor VARCHAR(50) NOT NULL,
+            valor REAL NOT NULL,
+            timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -81,6 +91,16 @@ def salvar_leitura(valor, ts=None):
         cur.execute("INSERT INTO leituras (valor) VALUES (%s)", (valor,))
     else:
         cur.execute("INSERT INTO leituras (valor, timestamp) VALUES (%s, %s)", (valor, ts))
+    conn.commit()
+    conn.close()
+
+def salvar_calibragem(sensor, valor, ts=None):
+    conn = get_conn()
+    cur = conn.cursor()
+    if ts is None:
+        cur.execute("INSERT INTO calibragem (sensor, valor) VALUES (%s, %s)", (sensor, valor))
+    else:
+        cur.execute("INSERT INTO calibragem (sensor, valor, timestamp) VALUES (%s, %s, %s)", (sensor, valor, ts))
     conn.commit()
     conn.close()
 
@@ -139,6 +159,54 @@ def buscar_intervalo_data(inicio_iso, fim_iso, limite=2000):
     conn.close()
     return rows
 
+# --- Calibragem helpers ---
+def buscar_calibragem(limite=1000, sensor=None):
+    conn = get_conn()
+    cur = conn.cursor()
+    if sensor:
+        cur.execute("""
+            SELECT sensor, valor, timestamp
+            FROM calibragem
+            WHERE sensor = %s
+            ORDER BY id DESC
+            LIMIT %s
+        """, (sensor, limite))
+    else:
+        cur.execute("""
+            SELECT sensor, valor, timestamp
+            FROM calibragem
+            ORDER BY id DESC
+            LIMIT %s
+        """, (limite,))
+    rows = cur.fetchall()
+    conn.close()
+    rows.reverse()
+    return rows
+
+def buscar_calibragem_intervalo(inicio_iso, fim_iso, limite=5000, sensor=None):
+    conn = get_conn()
+    cur = conn.cursor()
+    if sensor:
+        cur.execute("""
+            SELECT sensor, valor, timestamp
+            FROM calibragem
+            WHERE DATE(timestamp) >= DATE(%s) AND DATE(timestamp) <= DATE(%s)
+              AND sensor = %s
+            ORDER BY timestamp ASC
+            LIMIT %s
+        """, (inicio_iso, fim_iso, sensor, limite))
+    else:
+        cur.execute("""
+            SELECT sensor, valor, timestamp
+            FROM calibragem
+            WHERE DATE(timestamp) >= DATE(%s) AND DATE(timestamp) <= DATE(%s)
+            ORDER BY timestamp ASC
+            LIMIT %s
+        """, (inicio_iso, fim_iso, limite))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
 init_db(reset=False)
 
 # ---------------------------
@@ -158,25 +226,37 @@ def add_status_event(status, timestamp):
 def on_connect(client, userdata, flags, rc):
     print("Conectado ao broker MQTT com código:", rc)
     client.subscribe(MQTT_TOPIC)
+    client.subscribe(MQTT_TOPIC_CAL)
 
 def on_message(client, userdata, msg):
     try:
         global last_message_ts, current_device_status
-        valor = float(msg.payload.decode().strip())
-
+        payload = msg.payload.decode().strip()
         brazil_tz = pytz.timezone('America/Sao_Paulo')
         ts = datetime.now(brazil_tz)
 
-        salvar_leitura(valor, ts)
+        if msg.topic == MQTT_TOPIC:
+            # mensagem simples (float)
+            valor = float(payload)
+            salvar_leitura(valor, ts)
+            socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts.isoformat()})
 
+        elif msg.topic == MQTT_TOPIC_CAL:
+            # JSON com todos os sensores, ex: {"Sala":23.5,"Janela":22.1,"Fora":24.0}
+            data = json.loads(payload)
+            for sensor, val in data.items():
+                try:
+                    v = float(val)
+                except:
+                    continue
+                salvar_calibragem(sensor, v, ts)
+                socketio.emit('nova_calibragem', {"sensor": sensor, "valor": v, "timestamp": ts.isoformat()})
+
+        # Atualiza status do ESP
         last_message_ts = datetime.now(pytz.utc)
-
         if current_device_status != "online":
-            timestamp = datetime.now().isoformat()
-            add_status_event("online", timestamp)
+            add_status_event("online", datetime.now().isoformat())
             current_device_status = "online"
-
-        socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts.isoformat()})
         socketio.emit('esp32_status', {'status': 'online'})
 
     except Exception as e:
@@ -184,7 +264,7 @@ def on_message(client, userdata, msg):
 
 mqtt_client = mqtt.Client()
 mqtt_client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
-mqtt_client.tls_set()
+mqtt_client.tls_set()  # TLS
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
 
@@ -236,7 +316,7 @@ def handle_connect():
     socketio.emit('esp32_status', {'status': status})
 
 # ---------------------------
-# Rotas Flask
+# Rotas Flask (página principal e APIs existentes)
 # ---------------------------
 @app.route("/")
 def index():
@@ -244,21 +324,16 @@ def index():
 
 @app.route("/dados_iniciais")
 def dados_iniciais():
-    # pega parâmetro preload (se não vier, usa 300)
-    limite = int(request.args.get("preload", 300))
+    limite = int(request.args.get("preload", request.args.get("limite", 300)))
     rows = buscar_ultimos(limite)
     dados = [{"valor": r[0], "timestamp": r[1]} for r in rows]
-
-    # pega estatísticas do dia e último valor
     est = estatisticas_hoje()
     ultimo = est["atual"]
-
     return jsonify({
         "dados": dados,
         "ultimo": ultimo,
         "media_dia": est["media_hoje"]
     })
-
 
 @app.route("/estatisticas")
 def stats():
@@ -279,6 +354,35 @@ def historico_intervalo():
     rows = buscar_intervalo_data(inicio, fim, limite)
     dados = [{"valor": r[0], "timestamp": r[1]} for r in rows]
     return jsonify({"dados": dados})
+
+# ---------------------------
+# Rotas novas: Calibragem
+# ---------------------------
+@app.route("/calibragem")
+def calibragem():
+    return render_template("calibragem.html", title="Calibração dos Sensores")
+
+@app.route("/calibragem_dados")
+def calibragem_dados():
+    """
+    Parâmetros opcionais:
+      - sensor=<nome>
+      - inicio=YYYY-MM-DD
+      - fim=YYYY-MM-DD
+      - limite=<int>
+    """
+    sensor = request.args.get("sensor")
+    inicio = request.args.get("inicio")
+    fim    = request.args.get("fim")
+    limite = int(request.args.get("limite", 2000))
+
+    if inicio and fim:
+        rows = buscar_calibragem_intervalo(inicio, fim, limite, sensor)
+    else:
+        rows = buscar_calibragem(limite, sensor)
+
+    out = [{"sensor": r[0], "valor": r[1], "timestamp": r[2]} for r in rows]
+    return jsonify({"dados": out})
 
 # ---------------------------
 # Run
