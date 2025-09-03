@@ -98,12 +98,21 @@ input[type="number"]{
   gap: 12px;
 }
 
+
 .big-card {
   background: var(--card);
   border: 1px solid #1f2937;
   border-radius: 10px;
   padding: 10px;
   text-align: center;
+  cursor: pointer; /* Adiciona o cursor de ponteiro para indicar que é clicável */
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Novo estilo para o card quando o gráfico está visível */
+.big-card.selected {
+  border-color: var(--primary);
+  background-color: #142038; /* Um pouco mais claro para destaque */
 }
 
 .big-card .title {

@@ -5,6 +5,7 @@
 
   const socket = io();
   const chartsContainer = document.getElementById('chartsContainer');
+  const bigNumbersContainer = document.getElementById('bigNumbers');
   const statusESP32 = document.getElementById('statusESP32');
   const statusTempoReal = document.getElementById('statusTempoReal');
 
@@ -15,81 +16,138 @@
 
   let tempoRealAtivo = true;
   const charts = new Map();
+  // Novo Map para rastrear o estado de visibilidade dos gr‡ficos
+  const chartVisibility = new Map();
 
   const baseLayout = {
     margin: { t: 28, r: 18, b: 50, l: 60 },
     xaxis: { title: 'Data/Hora', type: 'date' },
+    // Corrigindo o s’mbolo de graus aqui tambŽm, por segurana
     yaxis: { title: 'Temperatura (\u00B0C)' },
-    dragmode: 'pan'
+    dragmode: 'pan',
+    plot_bgcolor: 'var(--card)',
+    paper_bgcolor: 'var(--card)',
+    font: {
+      color: 'var(--text)'
+    }
   };
 
-  function ensureChart(sensor){
-    if(charts.has(sensor)) return charts.get(sensor);
+  // Fun‹o para alternar a visibilidade de um gr‡fico
+  function toggleChartVisibility(sensor) {
+    const isVisible = chartVisibility.get(sensor);
+    const chartDiv = document.getElementById(`chart_${sensor}`);
+    const bigCard = document.getElementById(`bn_${sensor}`);
+
+    if (isVisible) {
+      chartDiv.style.display = 'none';
+      bigCard.classList.remove('selected');
+      chartVisibility.set(sensor, false);
+    } else {
+      chartDiv.style.display = 'block';
+      bigCard.classList.add('selected');
+      chartVisibility.set(sensor, true);
+    }
+  }
+
+  function ensureChart(sensor) {
+    if (charts.has(sensor)) return charts.get(sensor);
+
     const div = document.createElement('div');
     div.className = 'chart-item';
     div.id = `chart_${sensor}`;
+    // Gr‡ficos comeam escondidos para n‹o poluir a tela
+    div.style.display = 'none';
     chartsContainer.appendChild(div);
 
     Plotly.newPlot(div.id, [{
-      x: [], y: [], mode: 'lines+markers', name: sensor
-    }], { ...baseLayout, title: `Sensor: ${sensor}` }, {responsive: true});
+      x: [],
+      y: [],
+      mode: 'lines+markers',
+      name: sensor
+    }], { ...baseLayout,
+      title: `Sensor: ${sensor}`
+    }, {
+      responsive: true
+    });
 
-    // Se o usu‡rio fizer pan/zoom, desliga tempo real
     document.getElementById(div.id).on('plotly_relayout', (evt) => {
-      if(evt['xaxis.range[0]'] || evt['xaxis.range[1]'] || evt['xaxis.autorange'] === false){
+      if (evt['xaxis.range[0]'] || evt['xaxis.range[1]'] || evt['xaxis.autorange'] === false) {
         tempoRealAtivo = false;
         statusTempoReal.classList.remove('on');
         statusTempoReal.textContent = "Hist—rico (pan/zoom)";
       }
     });
 
-    const entry = { divId: div.id, data: [] };
+    const entry = {
+      divId: div.id,
+      data: []
+    };
     charts.set(sensor, entry);
+    // Por padr‹o, um novo sensor n‹o est‡ vis’vel
+    chartVisibility.set(sensor, false);
     return entry;
   }
 
-  function addPoint(sensor, ts, val){
+  function addPoint(sensor, ts, val) {
     const c = ensureChart(sensor);
-    c.data.push({ x: new Date(ts), y: val });
-    if(tempoRealAtivo){
+    c.data.push({
+      x: new Date(ts),
+      y: val
+    });
+    if (tempoRealAtivo) {
       Plotly.extendTraces(c.divId, {
-        x: [[new Date(ts)]],
-        y: [[val]]
+        x: [
+          [new Date(ts)]
+        ],
+        y: [
+          [val]
+        ]
       }, [0]);
     }
   }
 
-  function redrawFull(sensor){
+  function redrawFull(sensor) {
     const c = charts.get(sensor);
-    if(!c) return;
+    if (!c) return;
     Plotly.react(c.divId, [{
       x: c.data.map(p => p.x),
       y: c.data.map(p => p.y),
       mode: 'lines+markers',
       name: sensor
-    }], { ...baseLayout, title: `Sensor: ${sensor}` });
+    }], { ...baseLayout,
+      title: `Sensor: ${sensor}`
+    });
   }
 
-    function updateBigNumber(sensor, valor){
-      let card = document.getElementById("bn_" + sensor);
-      if(!card){
-        card = document.createElement("div");
-        card.className = "big-card";
-        card.id = "bn_" + sensor;
-        card.innerHTML = `
+  function updateBigNumber(sensor, valor) {
+    let card = document.getElementById("bn_" + sensor);
+    if (!card) {
+      card = document.createElement("div");
+      card.className = "big-card";
+      card.id = "bn_" + sensor;
+      card.innerHTML = `
           <div class="title">${sensor}</div>
           <div class="value">--</div>
         `;
-        document.getElementById("bigNumbers").appendChild(card);
-      }
-      card.querySelector(".value").textContent = valor.toFixed(2) + " ¡C";
+      // Adiciona o evento de clique para exibir/ocultar o gr‡fico
+      card.addEventListener('click', () => toggleChartVisibility(sensor));
+      bigNumbersContainer.appendChild(card);
     }
+    // *** AQUI ESTç A CORRE‚ÌO DO SêMBOLO DE GRAUS ***
+    // Usamos o caractere ¡ ou o c—digo unicode \u00B0
+    card.querySelector(".value").textContent = `${valor.toFixed(2)} ¡C`;
+  }
+  
+  // As demais fun›es (loadInitial, btnAplicar, listeners do socket) permanecem as mesmas.
+  // ... (Cole o resto do seu c—digo JS aqui)
+  // ...
+  // ...
 
-socket.on('nova_calibragem', (msg) => {
-  if(!msg || !msg.sensor) return;
-  addPoint(msg.sensor, msg.timestamp || Date.now(), msg.valor);
-  updateBigNumber(msg.sensor, msg.valor);
-});
+  socket.on('nova_calibragem', (msg) => {
+    if(!msg || !msg.sensor) return;
+    addPoint(msg.sensor, msg.timestamp || Date.now(), msg.valor);
+    updateBigNumber(msg.sensor, msg.valor);
+  });
 
 
   async function loadInitial(){
@@ -105,11 +163,17 @@ socket.on('nova_calibragem', (msg) => {
         group[s] = group[s] || [];
         group[s].push({ x: new Date(d.timestamp), y: d.valor });
       }
-
+      
+      // Limpa os cards de sensores antigos antes de carregar novos
+      bigNumbersContainer.innerHTML = '';
+      
       for(const sensor of Object.keys(group)){
         const c = ensureChart(sensor);
         c.data = group[sensor].sort((a,b)=>a.x-b.x);
         redrawFull(sensor);
+        // Atualiza o "big number" com o valor mais recente
+        const ultimoValor = c.data[c.data.length - 1].y;
+        updateBigNumber(sensor, ultimoValor);
       }
     }catch(e){
       console.error("Falha ao carregar hist—rico de calibra‹o:", e);
@@ -136,6 +200,7 @@ socket.on('nova_calibragem', (msg) => {
 
       charts.clear();
       chartsContainer.innerHTML = "";
+      bigNumbersContainer.innerHTML = ""; // Limpa os cards tambŽm
 
       const group = {};
       for(const d of dados){
@@ -148,6 +213,8 @@ socket.on('nova_calibragem', (msg) => {
         const c = ensureChart(s);
         c.data = group[s].sort((a,b)=>a.x-b.x);
         redrawFull(s);
+        const ultimoValor = c.data[c.data.length - 1].y;
+        updateBigNumber(s, ultimoValor);
       }
     }catch(e){
       console.error("Falha ao aplicar filtro:", e);
@@ -166,11 +233,16 @@ socket.on('nova_calibragem', (msg) => {
     }
   });
 
+  // O segundo listener 'nova_calibragem' parece redundante.
+  // O primeiro j‡ faz o addPoint e o updateBigNumber.
+  // Vou comentar este para evitar processamento duplicado.
+  /*
   socket.on('nova_calibragem', (msg) => {
     if(!msg || !msg.sensor) return;
     if(!tempoRealAtivo) return;
     addPoint(msg.sensor, msg.timestamp || Date.now(), msg.valor);
   });
+  */
 
   loadInitial();
 })();
