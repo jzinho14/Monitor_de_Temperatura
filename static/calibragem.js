@@ -14,12 +14,12 @@
   const btnAplicar = document.getElementById('btnAplicar');
 
   let tempoRealAtivo = true;
-  const charts = new Map(); // sensor -> {divId, data[]}
+  const charts = new Map();
 
   const baseLayout = {
-    margin: { t: 24, r: 18, b: 48, l: 54 },
+    margin: { t: 28, r: 18, b: 50, l: 60 },
     xaxis: { title: 'Data/Hora', type: 'date' },
-    yaxis: { title: 'Temperatura (¡C)' },
+    yaxis: { title: 'Temperatura (\u00B0C)' },
     dragmode: 'pan'
   };
 
@@ -77,7 +77,6 @@
       const j = await resp.json();
       const dados = j.dados || [];
 
-      // Agrupa por sensor
       const group = {};
       for(const d of dados){
         const s = d.sensor;
@@ -85,7 +84,6 @@
         group[s].push({ x: new Date(d.timestamp), y: d.valor });
       }
 
-      // Cria gr‡ficos e plota
       for(const sensor of Object.keys(group)){
         const c = ensureChart(sensor);
         c.data = group[sensor].sort((a,b)=>a.x-b.x);
@@ -114,7 +112,6 @@
       const j = await resp.json();
       const dados = j.dados || [];
 
-      // Limpa estrutura
       charts.clear();
       chartsContainer.innerHTML = "";
 
@@ -135,7 +132,6 @@
     }
   });
 
-  // SocketIO: status
   socket.on('esp32_status', (msg) => {
     if (msg.status === 'online') {
       statusESP32.textContent = "ESP32: Online";
@@ -148,14 +144,11 @@
     }
   });
 
-  // SocketIO: nova calibra‹o (um sensor por evento)
   socket.on('nova_calibragem', (msg) => {
-    // msg = { sensor, valor, timestamp }
     if(!msg || !msg.sensor) return;
-    if(!tempoRealAtivo) return; // em hist—rico n‹o atualiza
+    if(!tempoRealAtivo) return;
     addPoint(msg.sensor, msg.timestamp || Date.now(), msg.valor);
   });
 
-  // Inicializa
   loadInitial();
 })();

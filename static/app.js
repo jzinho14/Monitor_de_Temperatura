@@ -19,11 +19,12 @@
   const inpJanela = document.getElementById("inpJanela");
   const btnAplicar = document.getElementById("btnAplicar");
   const statusESP32 = document.getElementById("statusESP32");
-
+  
   function fmt(n){
     if(n === null || n === undefined || isNaN(n)) return "--";
-    return Number(n).toFixed(1) + " ¡C";
+    return Number(n).toFixed(1) + "\u00B0C";   // usa escape Unicode
   }
+
   function fmtTs(iso){
     if(!iso) return "Ñ";
     const d = new Date(iso);
@@ -40,7 +41,7 @@
   const layout = {
     margin: { t: 24, r: 18, b: 48, l: 54 },
     xaxis: { title: 'Data/Hora', type: 'date' },
-    yaxis: { title: 'Temperatura (¡C)' },
+    yaxis: { title: 'Temperatura (\u00B0C)' },
     dragmode: 'pan'
   };
 

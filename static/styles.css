@@ -79,11 +79,11 @@ input[type="number"]{
 
 .grid-charts{
   display:grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); /* aumenta uso de largura */
+  gap: 18px;
 }
 .chart-item{
-  min-height: 360px;
+  min-height: 380px;
   background:#0b1220;
   border:1px solid #1f2937;
   border-radius:12px;

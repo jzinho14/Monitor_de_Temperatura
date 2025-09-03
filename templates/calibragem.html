@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8" />
+<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>{{ title }}</title>
 <link rel="stylesheet" href="/static/styles.css" />
@@ -10,9 +10,7 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">
-    <span class="dot"></span> {{ title }}
-  </div>
+  <div class="brand"><span class="dot"></span> {{ title }}</div>
   <nav class="actions">
     <a class="btn" href="/">Monitor</a>
     <span id="statusESP32" class="badge"></span>
@@ -29,9 +27,6 @@
         <label>Sensor
           <select id="f_sensor">
             <option value="">Todos</option>
-            <option>Sala</option>
-            <option>Janela</option>
-            <option>Fora</option>
           </select>
         </label>
         <button id="btnAplicar" class="btn">Aplicar</button>
