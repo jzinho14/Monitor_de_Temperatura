@@ -88,23 +88,37 @@
     return entry;
   }
 
-  function addPoint(sensor, ts, val) {
-    const c = ensureChart(sensor);
-    c.data.push({
-      x: new Date(ts),
-      y: val
-    });
-    if (tempoRealAtivo) {
-      Plotly.extendTraces(c.divId, {
-        x: [
-          [new Date(ts)]
-        ],
-        y: [
-          [val]
-        ]
-      }, [0]);
+function addPoint(sensor, ts, val) {
+  const c = ensureChart(sensor);
+
+  // Adiciona o novo ponto ao nosso array de dados interno
+  c.data.push({
+    x: new Date(ts),
+    y: val
+  });
+
+  // Se estivermos em modo tempo real, atualiza o gr‡fico
+  if (tempoRealAtivo) {
+    
+    // 1. Garante que nosso array de dados em mem—ria n‹o cresa para sempre.
+    // Se tiver mais de 20 pontos, removemos o mais antigo (o primeiro do array).
+    if (c.data.length > 20) {
+      c.data.shift();
     }
+    
+    // 2. Usa o recurso do Plotly para limitar os pontos na TELA.
+    // O quarto par‰metro '20' diz ao Plotly para manter no m‡ximo 20 pontos vis’veis.
+    Plotly.extendTraces(c.divId, {
+      x: [
+        [new Date(ts)]
+      ],
+      y: [
+        [val]
+      ]
+    }, [0], 20); // <-- A MçGICA ACONTECE AQUI!
+
   }
+}
 
   function redrawFull(sensor) {
     const c = charts.get(sensor);
@@ -135,7 +149,7 @@
     }
     // *** AQUI ESTç A CORRE‚ÌO DO SêMBOLO DE GRAUS ***
     // Usamos o caractere ¡ ou o c—digo unicode \u00B0
-    card.querySelector(".value").textContent = `${valor.toFixed(2)} ¡C`;
+    card.querySelector(".value").textContent = `${valor.toFixed(2)} \u00B0C`;
   }
   
   // As demais fun›es (loadInitial, btnAplicar, listeners do socket) permanecem as mesmas.
