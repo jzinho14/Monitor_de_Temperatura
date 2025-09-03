@@ -137,13 +137,17 @@ input[type="number"]{
   padding-bottom: 20px;
 }
 
+/* Localize este bloco no seu styles.css */
 .chart-item {
   min-height: 380px;
   background: #0b1220;
   border: 1px solid #1f2937;
   border-radius: 12px;
   padding: 8px;
-}g:8px;
+  /* --- Adicionado para centralizar --- */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @media (max-width: 900px){

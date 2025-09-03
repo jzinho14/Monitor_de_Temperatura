@@ -29,20 +29,15 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # ---------------------------
-# Variáveis globais de status (MODIFICADO)
+# Variáveis globais de status
 # ---------------------------
-STATUS_INTERVAL_SEC = 15  # Diminuí o intervalo para uma resposta mais rápida
-OFFLINE_THRESHOLD_SEC = 45
-
-# NOVO: Dicionário para rastrear o status de múltiplos dispositivos.
-# Estrutura: { 'device_id': {'last_ts': datetime, 'status': 'online'/'offline'} }
-device_statuses = {}
-# NOVO: Lock para garantir acesso seguro ao dicionário por múltiplas threads
-status_lock = threading.Lock()
-
+last_message_ts = None
+STATUS_INTERVAL_SEC = 50
+OFFLINE_THRESHOLD_SEC = 100
+current_device_status = "offline"
 
 # ---------------------------
-# Banco de dados (sem alterações)
+# Banco de dados
 # ---------------------------
 def get_conn():
     if not DATABASE_URL:
@@ -75,7 +70,6 @@ def init_db(reset=False):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS status_log (
             id SERIAL PRIMARY KEY,
-            device_id VARCHAR(50) NOT NULL,
             status VARCHAR(20) NOT NULL,
             timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )
@@ -111,7 +105,6 @@ def salvar_calibragem(sensor, valor, ts=None):
     conn.commit()
     conn.close()
 
-# ... (demais funções de banco de dados sem alteração) ...
 def buscar_ultimos(limite=200):
     conn = get_conn()
     cur = conn.cursor()
@@ -167,6 +160,7 @@ def buscar_intervalo_data(inicio_iso, fim_iso, limite=2000):
     conn.close()
     return rows
 
+# --- Calibragem helpers ---
 def buscar_calibragem(limite=1000, sensor=None):
     conn = get_conn()
     cur = conn.cursor()
@@ -217,19 +211,18 @@ def buscar_calibragem_intervalo(inicio_iso, fim_iso, limite=5000, sensor=None):
 init_db(reset=False)
 
 # ---------------------------
-# Log de status (MODIFICADO)
+# Log de status
 # ---------------------------
-def add_status_event(device_id, status, timestamp): # MODIFICADO para aceitar device_id
+def add_status_event(status, timestamp):
     conn = get_conn()
     cur = conn.cursor()
-    # Adicionamos a coluna device_id na tabela status_log
-    cur.execute("INSERT INTO status_log (device_id, status, timestamp) VALUES (%s, %s, %s)", (device_id, status, timestamp))
+    cur.execute("INSERT INTO status_log (status, timestamp) VALUES (%s, %s)", (status, timestamp))
     conn.commit()
     conn.close()
-    print(f"Evento de status registrado: {device_id} -> {status} em {timestamp}")
+    print(f"Evento de status registrado: {status} em {timestamp}")
 
 # ---------------------------
-# MQTT (MODIFICADO)
+# MQTT
 # ---------------------------
 def on_connect(client, userdata, flags, rc):
     print("Conectado ao broker MQTT com código:", rc)
@@ -238,26 +231,26 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     try:
+        global last_message_ts, current_device_status
         payload = msg.payload.decode().strip()
         brazil_tz = pytz.timezone('America/Sao_Paulo')
         ts = datetime.now(brazil_tz)
-        device_id = None # MODIFICADO
 
         if msg.topic == MQTT_TOPIC:
-            device_id = "main_esp" # ID fixo para o monitor principal
+            # mensagem simples (float)
             valor = float(payload)
             salvar_leitura(valor, ts)
             socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts.isoformat()})
 
         elif msg.topic == MQTT_TOPIC_CAL:
+            # Formato: sensor_XXXX:valor
             if ":" in payload:
                 nome, val = payload.split(":", 1)
-                device_id = nome.strip() # O ID do dispositivo é o nome do sensor
                 try:
                     v = float(val)
-                    salvar_calibragem(device_id, v, ts)
+                    salvar_calibragem(nome.strip(), v, ts)
                     socketio.emit('nova_calibragem', {
-                        "sensor": device_id,
+                        "sensor": nome.strip(),
                         "valor": v,
                         "timestamp": ts.isoformat()
                     })
@@ -265,87 +258,78 @@ def on_message(client, userdata, msg):
                     print("Valor inválido na calibração:", payload)
             else:
                 print("Formato inesperado na calibração:", payload)
-        
-        # NOVO: Bloco de atualização de status individual
-        if device_id:
-            with status_lock:
-                # Se for a primeira mensagem deste dispositivo, inicializa seu status
-                if device_id not in device_statuses:
-                    device_statuses[device_id] = {'last_ts': None, 'status': 'offline'}
 
-                old_status = device_statuses[device_id]['status']
-                device_statuses[device_id]['last_ts'] = datetime.now(pytz.utc)
-                device_statuses[device_id]['status'] = 'online'
-            
-            # Se o status mudou de offline para online, registra e emite
-            if old_status == 'offline':
-                add_status_event(device_id, "online", ts.isoformat())
-                # NOVO: Evento de status específico para o dispositivo
-                socketio.emit('device_status_update', {'device_id': device_id, 'status': 'online'})
-
+        # Atualiza status do ESP
+        last_message_ts = datetime.now(pytz.utc)
+        if current_device_status != "online":
+            add_status_event("online", datetime.now().isoformat())
+            current_device_status = "online"
+        socketio.emit('esp32_status', {'status': 'online'})
 
     except Exception as e:
         print("Erro ao processar mensagem MQTT:", e)
 
-# ... (configuração do mqtt_client sem alterações) ...
+
 mqtt_client = mqtt.Client()
 mqtt_client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
-mqtt_client.tls_set()
+mqtt_client.tls_set()  # TLS
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
 
-threading.Thread(target=mqtt_client.loop_forever, daemon=True).start()
+def mqtt_loop():
+    mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
+    mqtt_client.loop_forever()
+
+threading.Thread(target=mqtt_loop, daemon=True).start()
 
 # ---------------------------
-# Rotinas de background (MODIFICADO)
+# Rotinas de background
 # ---------------------------
-# NOVO: Função de verificação de status refatorada
-def background_status_checker():
-    """Verifica o status de todos os dispositivos conhecidos periodicamente."""
+def check_device_status():
+    global last_message_ts, current_device_status
+
     while True:
-        now_utc = datetime.now(pytz.utc)
-        
-        with status_lock:
-            # Itera sobre uma cópia das chaves para poder modificar o dict
-            device_ids = list(device_statuses.keys())
+        if last_message_ts is None:
+            new_status = "offline"
+        else:
+            delta = datetime.now(pytz.utc) - last_message_ts
+            new_status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
 
-            for device_id in device_ids:
-                device_info = device_statuses[device_id]
-                last_ts = device_info.get('last_ts')
-                current_status = device_info.get('status')
+        if new_status != current_device_status:
+            timestamp = datetime.now().isoformat()
+            add_status_event(new_status, timestamp)
+            current_device_status = new_status
 
-                if last_ts is None:
-                    new_status = "offline"
-                else:
-                    delta = now_utc - last_ts
-                    new_status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
-
-                # Se o status mudou, atualiza e notifica
-                if new_status != current_status:
-                    device_statuses[device_id]['status'] = new_status
-                    timestamp = datetime.now().isoformat()
-                    add_status_event(device_id, new_status, timestamp)
-                    socketio.emit('device_status_update', {'device_id': device_id, 'status': new_status})
-        
+        socketio.emit('esp32_status', {'status': new_status})
         socketio.sleep(STATUS_INTERVAL_SEC)
 
+def keep_alive():
+    print("Iniciando rotina de 'keep-alive'...")
+    url = "http://localhost:" + str(APP_PORT)
+    while True:
+        try:
+            requests.get(url)
+            print("Keep-alive: requisição enviada com sucesso.")
+        except Exception as e:
+            print("Keep-alive: falha ao enviar requisição:", e)
+        socketio.sleep(600)
 
 @socketio.on('connect')
 def handle_connect():
-    # NOVO: Envia o status atual de todos os dispositivos conhecidos quando um cliente se conecta
-    with status_lock:
-        for device_id, info in device_statuses.items():
-            socketio.emit('device_status_update', {'device_id': device_id, 'status': info['status']})
-
+    if last_message_ts is None:
+        status = "offline"
+    else:
+        delta = datetime.now(pytz.utc) - last_message_ts
+        status = "online" if delta.total_seconds() < OFFLINE_THRESHOLD_SEC else "offline"
+    socketio.emit('esp32_status', {'status': status})
 
 # ---------------------------
-# Rotas Flask (sem alterações, exceto a remoção do 'keep_alive' que não é ideal)
+# Rotas Flask (página principal e APIs existentes)
 # ---------------------------
 @app.route("/")
 def index():
     return render_template("index.html", title="Monitoramento de Temperatura")
 
-# ... (demais rotas sem alterações) ...
 @app.route("/dados_iniciais")
 def dados_iniciais():
     limite = int(request.args.get("preload", request.args.get("limite", 300)))
@@ -379,12 +363,22 @@ def historico_intervalo():
     dados = [{"valor": r[0], "timestamp": r[1]} for r in rows]
     return jsonify({"dados": dados})
 
+# ---------------------------
+# Rotas novas: Calibragem
+# ---------------------------
 @app.route("/calibragem")
 def calibragem():
     return render_template("calibragem.html", title="Calibração dos Sensores")
 
 @app.route("/calibragem_dados")
 def calibragem_dados():
+    """
+    Parâmetros opcionais:
+      - sensor=<nome>
+      - inicio=YYYY-MM-DD
+      - fim=YYYY-MM-DD
+      - limite=<int>
+    """
     sensor = request.args.get("sensor")
     inicio = request.args.get("inicio")
     fim    = request.args.get("fim")
@@ -398,11 +392,10 @@ def calibragem_dados():
     out = [{"sensor": r[0], "valor": r[1], "timestamp": r[2]} for r in rows]
     return jsonify({"dados": out})
 
-
 # ---------------------------
-# Run (MODIFICADO)
+# Run
 # ---------------------------
 if __name__ == "__main__":
-    # Substituímos a tarefa de background pela nova função
-    socketio.start_background_task(target=background_status_checker)
+    socketio.start_background_task(target=check_device_status)
+    threading.Thread(target=keep_alive, daemon=True).start()
     socketio.run(app, host="0.0.0.0", port=APP_PORT, allow_unsafe_werkzeug=True)
