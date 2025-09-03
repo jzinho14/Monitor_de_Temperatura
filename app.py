@@ -242,15 +242,21 @@ def on_message(client, userdata, msg):
             socketio.emit('nova_temperatura', {"valor": valor, "timestamp": ts.isoformat()})
 
         elif msg.topic == MQTT_TOPIC_CAL:
-            # JSON com todos os sensores, ex: {"Sala":23.5,"Janela":22.1,"Fora":24.0}
-            data = json.loads(payload)
-            for sensor, val in data.items():
+            # Formato: sensor_XXXX:valor
+            if ":" in payload:
+                nome, val = payload.split(":", 1)
                 try:
                     v = float(val)
-                except:
-                    continue
-                salvar_calibragem(sensor, v, ts)
-                socketio.emit('nova_calibragem', {"sensor": sensor, "valor": v, "timestamp": ts.isoformat()})
+                    salvar_calibragem(nome.strip(), v, ts)
+                    socketio.emit('nova_calibragem', {
+                        "sensor": nome.strip(),
+                        "valor": v,
+                        "timestamp": ts.isoformat()
+                    })
+                except ValueError:
+                    print("Valor inválido na calibração:", payload)
+            else:
+                print("Formato inesperado na calibração:", payload)
 
         # Atualiza status do ESP
         last_message_ts = datetime.now(pytz.utc)
@@ -261,6 +267,7 @@ def on_message(client, userdata, msg):
 
     except Exception as e:
         print("Erro ao processar mensagem MQTT:", e)
+
 
 mqtt_client = mqtt.Client()
 mqtt_client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
