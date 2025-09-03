@@ -70,6 +70,28 @@
     }], { ...baseLayout, title: `Sensor: ${sensor}` });
   }
 
+    function updateBigNumber(sensor, valor){
+      let card = document.getElementById("bn_" + sensor);
+      if(!card){
+        card = document.createElement("div");
+        card.className = "big-card";
+        card.id = "bn_" + sensor;
+        card.innerHTML = `
+          <div class="title">${sensor}</div>
+          <div class="value">--</div>
+        `;
+        document.getElementById("bigNumbers").appendChild(card);
+      }
+      card.querySelector(".value").textContent = valor.toFixed(2) + " ¡C";
+    }
+
+socket.on('nova_calibragem', (msg) => {
+  if(!msg || !msg.sensor) return;
+  addPoint(msg.sensor, msg.timestamp || Date.now(), msg.valor);
+  updateBigNumber(msg.sensor, msg.valor);
+});
+
+
   async function loadInitial(){
     try{
       const url = `/calibragem_dados?limite=1000`;
